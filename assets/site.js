@@ -409,6 +409,177 @@
     tocLinks.forEach(function (l) { var t = document.getElementById(l.getAttribute('href').slice(1)); if (t) tocIo.observe(t); });
   }
 
+  /* Events page (Kora events contract). Events come from the #events-data JSON on the page (Kora's
+     website editor appends published events there) merged with live published events from the Kora
+     public events API, so an event published in kora-web shows up even before the site is edited. */
+  var evRoot = $('[data-events]');
+  if (evRoot) (function () {
+    var TZ = 'America/New_York';
+    var dataEl = document.getElementById('events-data');
+    var events = [];
+    try { events = (JSON.parse(dataEl.textContent).events || []).slice(); } catch (e) {}
+    var calEl = $('[data-cal]', evRoot), listEl = $('[data-ev-list]', evRoot), nextBtn = $('[data-ev-next]', evRoot);
+    var modal = $('[data-ev-modal]'), modalBody = modal ? $('[data-ev-modal-body]', modal) : null;
+    var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var safeUrl = function (u) { return /^(https?:)?\/\//i.test(u || '') || /^[\w.\/-]+$/.test(u || '') ? u : ''; };
+    function parts(d, tz) {
+      var f = new Intl.DateTimeFormat('en-US', { timeZone: tz || TZ, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(d);
+      var g = function (t) { return +f.filter(function (p) { return p.type === t; })[0].value; };
+      return { y: g('year'), m: g('month') - 1, d: g('day') };
+    }
+    function key(p) { return p.y + '-' + p.m + '-' + p.d; }
+    function fmt(d, tz, opts) { return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz || TZ }, opts)).format(d); }
+    function when(ev) {
+      var s = ev._start, e = ev._end, tz = ev.timezone || TZ;
+      var day = fmt(s, tz, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      var t = fmt(s, tz, { hour: 'numeric', minute: '2-digit' }) + (e ? ' – ' + fmt(e, tz, { hour: 'numeric', minute: '2-digit' }) : '');
+      return { day: day, time: t };
+    }
+    function prep(list) {
+      var seen = {}, out = [];
+      list.forEach(function (ev) {
+        if (!ev || !ev.title || !ev.start_datetime) return;
+        var s = new Date(ev.start_datetime); if (isNaN(s)) return;
+        var k = ev.id ? 'id:' + ev.id : ('t:' + ev.title.toLowerCase() + '|' + key(parts(s, ev.timezone)));
+        var k2 = 't:' + ev.title.toLowerCase() + '|' + key(parts(s, ev.timezone));
+        if (seen[k] || seen[k2]) return;
+        seen[k] = seen[k2] = true;
+        ev._start = s; ev._end = ev.end_datetime ? new Date(ev.end_datetime) : null;
+        ev._key = key(parts(s, ev.timezone));
+        out.push(ev);
+      });
+      return out.sort(function (a, b) { return a._start - b._start; });
+    }
+    function imgBox(ev, cls) {
+      var u = safeUrl(ev.hero_image_url);
+      if (!u) return '<div class="ev-img ev-img--empty ' + (cls || '') + '" aria-hidden="true"><svg viewBox="0 0 120 120"><use href="#rosette"/></svg></div>';
+      return '<div class="ev-img ' + (cls || '') + '"><img class="ev-img__blur" src="' + esc(u) + '" alt="" aria-hidden="true">' +
+             '<img class="ev-img__main" src="' + esc(u) + '" alt="' + esc(ev.title) + '" loading="lazy"></div>';
+    }
+    function openEvent(ev) {
+      if (!modal) return;
+      var w = when(ev), u = safeUrl(ev.hero_image_url), t = safeUrl(ev.ticket_url);
+      var full = ev.full_description && ev.full_description !== ev.short_description ? '<p class="ev-modal__desc">' + esc(ev.full_description) + '</p>' : '';
+      modalBody.innerHTML = (u ? '<div class="ev-modal__media"><img class="ev-img__blur" src="' + esc(u) + '" alt="" aria-hidden="true"><img class="ev-modal__img" src="' + esc(u) + '" alt="' + esc(ev.title) + '"></div>' : '') +
+        '<div class="ev-modal__body"><p class="ev-modal__date">' + esc(w.day) + '</p><h2 class="ev-modal__title" id="ev-modal-title">' + esc(ev.title) + '</h2>' +
+        '<p class="ev-modal__meta"><span>' + esc(w.time) + '</span><span>' + esc(ev.location_text || 'Marigold, 434 White Plains Rd, Eastchester, NY') + '</span></p>' +
+        (ev.short_description ? '<p class="ev-modal__desc">' + esc(ev.short_description) + '</p>' : '') + full +
+        '<div class="ev-modal__actions">' + (t ? '<a class="btn btn--primary" href="' + esc(t) + '" target="_blank" rel="noopener">Register / Book</a>' : '') +
+        '<a class="btn ' + (t ? 'btn--line' : 'btn--primary') + '" href="https://resy.com/cities/eastchester-ny-ny/venues/marigold" target="_blank" rel="noopener">Reserve a table</a></div></div>';
+      modal.scrollTop = 0;
+      modal.showModal();
+      modal.scrollTop = 0;
+    }
+    function openDay(list) {
+      if (list.length === 1) return openEvent(list[0]);
+      var w = when(list[0]);
+      modalBody.innerHTML = '<div class="ev-modal__body"><p class="ev-modal__date">' + esc(w.day) + '</p><h2 class="ev-modal__title" id="ev-modal-title">' + list.length + ' events</h2><ul class="ev-modal__day">' +
+        list.map(function (ev, i) { return '<li><button class="ev-card__more" type="button" data-day-ev="' + i + '">' + esc(ev.title) + ' · ' + esc(when(ev).time) + ' →</button></li>'; }).join('') + '</ul></div>';
+      $$('[data-day-ev]', modalBody).forEach(function (b) { b.addEventListener('click', function () { openEvent(list[+b.getAttribute('data-day-ev')]); }); });
+      modal.scrollTop = 0;
+      modal.showModal();
+      modal.scrollTop = 0;
+    }
+    if (modal) {
+      $('[data-ev-modal-close]', modal).addEventListener('click', function () { modal.close(); });
+      modal.addEventListener('click', function (e) { if (e.target === modal) modal.close(); });
+    }
+    var today = parts(new Date()), view = { y: today.y, m: today.m };
+    function renderCal() {
+      var byDay = {};
+      events.forEach(function (ev) { (byDay[ev._key] = byDay[ev._key] || []).push(ev); });
+      var first = new Date(Date.UTC(view.y, view.m, 1)), startDow = first.getUTCDay();
+      var dim = new Date(Date.UTC(view.y, view.m + 1, 0)).getUTCDate(), prevDim = new Date(Date.UTC(view.y, view.m, 0)).getUTCDate();
+      var label = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(first);
+      var dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      var cells = '';
+      for (var i = 0; i < 42; i++) {
+        var dnum = i - startDow + 1, y = view.y, m = view.m, out = false;
+        if (dnum < 1) { m -= 1; dnum = prevDim + dnum; out = true; } else if (dnum > dim) { m += 1; dnum -= dim; out = true; }
+        if (m < 0) { m = 11; y -= 1; } if (m > 11) { m = 0; y += 1; }
+        var k = y + '-' + m + '-' + dnum, evs = byDay[k] || [], isToday = k === key(today);
+        var chips = evs.map(function (ev) { return '<span class="cal__chip" data-ev-id="' + esc(ev._uid) + '">' + esc(ev.title) + '<small>' + esc(fmt(ev._start, ev.timezone, { hour: 'numeric', minute: '2-digit' })) + '</small></span>'; }).join('');
+        var lbl = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m, dnum)));
+        cells += '<div class="cal__cell' + (out ? ' cal__cell--out' : '') + (evs.length ? ' has-events' : '') + (isToday ? ' is-today' : '') + '"' +
+          (evs.length ? ' role="button" tabindex="0" data-day="' + k + '" aria-label="' + esc(lbl + ': ' + evs.map(function (e) { return e.title; }).join(', ')) + '"' : '') +
+          '><span class="cal__num">' + dnum + '</span>' + chips + (evs.length ? '<span class="cal__dot" aria-hidden="true"></span>' : '') + '</div>';
+      }
+      calEl.innerHTML = '<div class="cal__head"><h3 class="cal__month" aria-live="polite">' + label + '</h3><div class="cal__nav">' +
+        '<button class="cal__btn" type="button" data-cal-prev aria-label="Previous month"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>' +
+        '<button class="cal__btn" type="button" data-cal-today>Today</button>' +
+        '<button class="cal__btn" type="button" data-cal-next aria-label="Next month"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div></div>' +
+        '<div class="cal__grid" role="grid">' + dows.map(function (d) { return '<div class="cal__dow" role="columnheader">' + d + '</div>'; }).join('') + cells + '</div>';
+      $('[data-cal-prev]', calEl).addEventListener('click', function () { view.m -= 1; if (view.m < 0) { view.m = 11; view.y -= 1; } renderCal(); });
+      $('[data-cal-next]', calEl).addEventListener('click', function () { view.m += 1; if (view.m > 11) { view.m = 0; view.y += 1; } renderCal(); });
+      $('[data-cal-today]', calEl).addEventListener('click', function () { view = { y: today.y, m: today.m }; renderCal(); });
+      $$('[data-day]', calEl).forEach(function (cell) {
+        var go = function (e) {
+          var chip = e.target.closest && e.target.closest('[data-ev-id]');
+          var list = byDay[cell.getAttribute('data-day')];
+          if (chip) { var one = list.filter(function (x) { return x._uid === chip.getAttribute('data-ev-id'); })[0]; if (one) return openEvent(one); }
+          openDay(list);
+        };
+        cell.addEventListener('click', go);
+        cell.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
+      });
+    }
+    function renderList() {
+      var now = new Date(), up = [], past = [];
+      events.forEach(function (ev) { ((ev._end || ev._start) >= now ? up : past).push(ev); });
+      var card = function (ev) {
+        var w = when(ev);
+        return '<li class="ev-card">' + imgBox(ev) + '<div class="ev-card__body"><p class="ev-card__date">' + esc(w.day) + '</p><h3 class="ev-card__title">' + esc(ev.title) + '</h3>' +
+          '<p class="ev-card__time">' + esc(w.time) + '</p>' + (ev.short_description ? '<p class="ev-card__desc">' + esc(ev.short_description) + '</p>' : '') +
+          '<button class="ev-card__more" type="button" data-open-ev="' + esc(ev._uid) + '">Event details →</button></div></li>';
+      };
+      var html = '';
+      if (up.length) html += '<h3 class="ev-list__group">Upcoming</h3><ul class="ev-list">' + up.map(card).join('') + '</ul>';
+      if (past.length) html += '<h3 class="ev-list__group">Past events</h3><ul class="ev-list">' + past.slice().reverse().map(card).join('') + '</ul>';
+      listEl.innerHTML = html || '<p class="ev-empty">No events are scheduled right now. Check back soon, or follow us on Instagram for news.</p>';
+      $$('[data-open-ev]', listEl).forEach(function (b) {
+        b.addEventListener('click', function () { var ev = events.filter(function (x) { return x._uid === b.getAttribute('data-open-ev'); })[0]; if (ev) openEvent(ev); });
+      });
+    }
+    function renderNext() {
+      var now = new Date(), nx = events.filter(function (ev) { return (ev._end || ev._start) >= now; })[0];
+      if (!nextBtn) return;
+      if (!nx) { nextBtn.hidden = true; return; }
+      nextBtn.hidden = false;
+      nextBtn.textContent = 'Next: ' + nx.title + ', ' + fmt(nx._start, nx.timezone, { month: 'short', day: 'numeric' }) + ' →';
+      nextBtn.onclick = function () { var p = parts(nx._start, nx.timezone); view = { y: p.y, m: p.m }; selectView('calendar'); renderCal(); };
+    }
+    function renderAll() { events.forEach(function (ev, i) { ev._uid = ev._uid || ('e' + i); }); renderCal(); renderList(); renderNext(); }
+    var tabs = $$('[data-ev-view]', evRoot);
+    function selectView(v) {
+      tabs.forEach(function (t) {
+        var on = t.getAttribute('data-ev-view') === v;
+        t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { selectView(t.getAttribute('data-ev-view')); });
+      t.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); var n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; selectView(n.getAttribute('data-ev-view')); n.focus(); }
+      });
+    });
+    events = prep(events);
+    selectView('calendar');
+    renderAll();
+    var cfg = window.KORA_SITE_CONFIG || {};
+    if (cfg.apiBaseUrl && cfg.businessId && window.fetch) {
+      fetch(cfg.apiBaseUrl + '/api/v1/public/events?business_id=' + encodeURIComponent(cfg.businessId))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.events || !data.events.length) return;
+          events = prep(events.map(function (e) { return e; }).concat(data.events));
+          events.forEach(function (ev, i) { ev._uid = 'e' + i; });
+          renderAll();
+        })
+        .catch(function () {});
+    }
+  })();
+
   /* Footer year. */
   var yr = $('[data-year]');
   if (yr) yr.textContent = String(new Date().getFullYear());

@@ -142,6 +142,16 @@ sections:
 - `#apply` "Join our team." — job application form with resume upload, posting multipart to the Kora forms submit-with-file API
 also: The application submit script is inline at the end of the page and uses /api/v1/public/forms/submit-with-file.
 
+## eastchester-marigold-events.html → /eastchester-marigold-events
+title: Events & Holidays | Marigold, Eastchester NY
+purpose: Events page: Calendar (default) and List views of Marigold's events with a detail modal.
+sections:
+- `#events-hero` "Events at Marigold, Eastchester NY: Holidays & Celebrations" — photo hero with a single centred headline
+- `#whats-on` "Celebrate the season with us." — Calendar / List view tabs, month calendar grid, event cards and an event detail modal
+- `#events-cta` "Planning an event of your own?" — closing band for hosting your own event with reserve and private parties buttons
+also: Events live in the JSON block <script id="events-data"> (same fields as Kora's public events API); to publish an event, append it there and keep existing ones. site.js renders the calendar and list from it.
+also: site.js also merges live published events from <apiBaseUrl>/api/v1/public/events?business_id=… at runtime.
+
 ## accessibility-page-01.html → /accessibility-page-01
 title: Accessibility Statement | Marigold, Eastchester NY
 purpose: Accessibility statement: WCAG AA commitment, site features, third-party content, feedback and assistance.
