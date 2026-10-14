@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /.kora/
+Sitemap: https://marigold.restaurant/sitemap.xml

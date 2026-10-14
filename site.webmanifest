@@ -1,0 +1,15 @@
+{
+  "name": "Marigold",
+  "short_name": "Marigold",
+  "icons": [
+    {
+      "src": "assets/logo/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#0D4948",
+  "background_color": "#FFFFFF",
+  "display": "standalone",
+  "start_url": "/"
+}
