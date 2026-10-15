@@ -92,43 +92,96 @@
     window.addEventListener('resize', function () { if (window.innerWidth > 1000 && root.classList.contains('menu-open')) setMenu(false); });
   }
 
-  /* Hero video: the original full-length film with play/pause and sound controls (it starts muted, as browsers require
-     for autoplay). Paused for visitors who prefer reduced motion; they can still press play. */
+  /* Hero video: poster paints first (preload=none). Mobile gets a short compressed cut; desktop gets the full film.
+     Source is attached after idle so LCP is the poster, not the MP4. Muted autoplay; reduced-motion stays on poster. */
   var video = $('[data-hero-video]'), vPlay = $('[data-video-play]'), vSound = $('[data-video-sound]');
   if (video) {
+    var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    var useMobileVideo = window.matchMedia('(max-width: 760px)').matches
+      || !!(conn && (conn.saveData || /2g/.test(conn.effectiveType || '')));
+    var sourceLoaded = false;
+    var userPaused = false;
+    var heroVisible = true;
+
     var setPlayUi = function () {
-      var paused = video.paused;
+      if (!vPlay) return;
+      var paused = !sourceLoaded || video.paused;
       vPlay.setAttribute('aria-pressed', String(paused));
       vPlay.setAttribute('aria-label', paused ? 'Play video' : 'Pause video');
     };
     var setSoundUi = function () {
+      if (!vSound) return;
       var on = !video.muted;
       vSound.setAttribute('aria-pressed', String(on));
       vSound.setAttribute('aria-label', on ? 'Turn video sound off' : 'Turn video sound on');
     };
-    if (reduce) { video.removeAttribute('autoplay'); video.pause(); }
-    else { var pr = video.play(); if (pr && pr.catch) pr.catch(function () { setPlayUi(); }); }
+    var loadSource = function () {
+      if (sourceLoaded) return;
+      sourceLoaded = true;
+      var src = useMobileVideo
+        ? (video.getAttribute('data-src-mobile') || 'assets/video/marigold-hero-mobile.mp4')
+        : (video.getAttribute('data-src-desktop') || 'assets/video/marigold-hero.mp4');
+      var source = document.createElement('source');
+      source.src = src;
+      source.type = 'video/mp4';
+      video.appendChild(source);
+      video.load();
+    };
+    var tryPlay = function () {
+      if (reduce || userPaused || document.hidden || !heroVisible) return;
+      loadSource();
+      var pr = video.play();
+      if (pr && pr.catch) pr.catch(function () { setPlayUi(); });
+    };
+
     video.addEventListener('play', setPlayUi);
     video.addEventListener('pause', setPlayUi);
     video.addEventListener('volumechange', setSoundUi);
-    if (vPlay) vPlay.addEventListener('click', function () { if (video.paused) video.play(); else video.pause(); });
+    if (vPlay) vPlay.addEventListener('click', function () {
+      if (!sourceLoaded) {
+        userPaused = false;
+        loadSource();
+        var p0 = video.play();
+        if (p0 && p0.catch) p0.catch(function () { setPlayUi(); });
+        return;
+      }
+      if (video.paused) { userPaused = false; video.play(); }
+      else { userPaused = true; video.pause(); }
+    });
     if (vSound) vSound.addEventListener('click', function () {
+      if (!sourceLoaded) loadSource();
       video.muted = !video.muted;
-      if (!video.muted) { video.volume = 1; if (video.paused) video.play(); }
+      if (!video.muted) {
+        video.volume = 1;
+        userPaused = false;
+        if (video.paused) video.play();
+      }
     });
     setPlayUi(); setSoundUi();
+
+    if (!reduce) {
+      if (useMobileVideo) {
+        var kickoff = function () { tryPlay(); };
+        if ('requestIdleCallback' in window) requestIdleCallback(kickoff, { timeout: 2500 });
+        else setTimeout(kickoff, 1500);
+      } else {
+        setTimeout(tryPlay, 100);
+      }
+    }
+
     /* Save bandwidth and CPU: pause while the hero is off screen (unless the visitor paused it). */
     if ('IntersectionObserver' in window) {
-      var userPaused = false;
-      if (vPlay) vPlay.addEventListener('click', function () { userPaused = video.paused; });
-      var heroVisible = true;
       var resume = function () {
-        if (heroVisible && !userPaused && !reduce && !document.hidden && video.paused) { var p2 = video.play(); if (p2 && p2.catch) p2.catch(function () {}); }
+        if (heroVisible && !userPaused && !reduce && !document.hidden && sourceLoaded && video.paused) {
+          var p2 = video.play();
+          if (p2 && p2.catch) p2.catch(function () {});
+        }
       };
       new IntersectionObserver(function (en) {
         if (document.hidden) return;
         heroVisible = en[0].isIntersecting;
-        if (!heroVisible) { if (!video.paused) video.pause(); } else resume();
+        if (!heroVisible) { if (sourceLoaded && !video.paused) video.pause(); }
+        else resume();
       }, { threshold: 0.15 }).observe(video.parentElement);
       document.addEventListener('visibilitychange', resume);
     }
@@ -193,6 +246,34 @@
   var tabs = $$('.menu__tab');
   var previewImgs = $$('.menu__preview-img');
   var badge = $('[data-menu-badge]');
+  /* Preview column is display:none under 1000px, but browsers may still fetch lazy srcset.
+     Strip sources on small screens; restore if the viewport grows to desktop. */
+  var previewDesktop = window.matchMedia('(min-width: 1000px)');
+  function syncPreviewSources() {
+    previewImgs.forEach(function (img) {
+      if (previewDesktop.matches) {
+        if (!img.getAttribute('src') && img.getAttribute('data-src')) {
+          img.setAttribute('src', img.getAttribute('data-src'));
+          if (img.getAttribute('data-srcset')) img.setAttribute('srcset', img.getAttribute('data-srcset'));
+          if (img.getAttribute('data-sizes')) img.setAttribute('sizes', img.getAttribute('data-sizes'));
+        }
+      } else {
+        if (img.getAttribute('src') && !img.getAttribute('data-src')) {
+          img.setAttribute('data-src', img.getAttribute('src'));
+          if (img.getAttribute('srcset')) img.setAttribute('data-srcset', img.getAttribute('srcset'));
+          if (img.getAttribute('sizes')) img.setAttribute('data-sizes', img.getAttribute('sizes'));
+        }
+        img.removeAttribute('src');
+        img.removeAttribute('srcset');
+        img.removeAttribute('sizes');
+      }
+    });
+  }
+  if (previewImgs.length) {
+    syncPreviewSources();
+    if (previewDesktop.addEventListener) previewDesktop.addEventListener('change', syncPreviewSources);
+    else if (previewDesktop.addListener) previewDesktop.addListener(syncPreviewSources);
+  }
   function showDish(li) {
     if (!li) return;
     var key = li.getAttribute('data-dish');
@@ -267,15 +348,39 @@
     spin();
   }
 
-  /* Seamless loops: duplicate marquee and filmstrip content (clones hidden from assistive tech). */
-  $$('[data-marquee], .filmstrip__track').forEach(function (track) {
+  /* Seamless loops: duplicate marquee/filmstrip content (clones hidden from assistive tech).
+     Filmstrip clones must wait until the strip is near the viewport — cloneNode on lazy images
+     at page load forces every gallery asset to download immediately. */
+  function duplicateTrack(track) {
+    if (track.getAttribute('data-duplicated') === '1') return;
+    track.setAttribute('data-duplicated', '1');
     var kids = Array.prototype.slice.call(track.children);
     kids.forEach(function (k) {
       var c = k.cloneNode(true);
       c.setAttribute('aria-hidden', 'true');
-      $$('img', c).forEach(function (img) { img.alt = ''; img.setAttribute('role', 'presentation'); });
+      $$('img', c).forEach(function (img) {
+        img.alt = '';
+        img.setAttribute('role', 'presentation');
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+      });
       track.appendChild(c);
     });
+  }
+  $$('[data-marquee]').forEach(duplicateTrack);
+  $$('.filmstrip__track').forEach(function (track) {
+    if (reduce) return; /* reduced-motion uses a plain scroll strip; no loop clone needed */
+    var root = track.closest('[data-filmstrip]') || track;
+    if ('IntersectionObserver' in window) {
+      var fio = new IntersectionObserver(function (entries) {
+        if (!entries[0].isIntersecting) return;
+        fio.disconnect();
+        duplicateTrack(track);
+      }, { rootMargin: '400px 0px' });
+      fio.observe(root);
+    } else {
+      duplicateTrack(track);
+    }
   });
 
   /* FAQ: animate open/close height. */
