@@ -425,63 +425,191 @@
     if (dateInput) { var t = new Date(); t.setMinutes(t.getMinutes() - t.getTimezoneOffset()); dateInput.min = t.toISOString().slice(0, 10); }
   }
 
-  /* Menu page: switch between Dinner / Lunch / Happy Hour, scroll-spy the category bar, dish photo lightbox. */
-  var fmTabs = $$('[data-fm-tab]');
-  function fmSelect(tab, focus) {
-    fmTabs.forEach(function (t) {
-      var on = t === tab;
-      t.setAttribute('aria-selected', String(on));
-      t.tabIndex = on ? 0 : -1;
-      var panel = document.getElementById(t.getAttribute('aria-controls'));
-      if (panel) panel.hidden = !on;
-    });
-    if (focus) tab.focus();
-    var cats = $('[data-fm-cats]');
-    if (cats) cats.hidden = tab.getAttribute('data-fm-tab') !== 'dinner';
-    /* Bring the start of the chosen menu just under the sticky header + menu bar. The bar is position:sticky, so its
-       offsetTop is NOT its place in the flow; measure the panel itself instead. Only scroll when we are already past it. */
-    var bar = $('[data-fm-bar]');
-    var panelEl = document.getElementById(tab.getAttribute('aria-controls'));
-    if (bar && panelEl) {
-      var hdrH = header ? header.offsetHeight : 0;
-      var target = panelEl.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - hdrH;
-      if (target < window.scrollY - 2) {
-        if (header) header.classList.remove('is-hidden');   /* scrolling up keeps the header visible */
-        window.scrollTo({ top: Math.max(0, target), behavior: reduce ? 'auto' : 'smooth' });
+  /* Menu page. Kora draws Dinner / Lunch / Happy Hour from the menu data into the kora:data:menu region (the
+     "cards" layout, so dish photos are included): one section per menu, all shown, with a row of jump links.
+     Here, on top of that: one menu at a time behind tabs in a sticky bar with the open menu's categories, each
+     menu's headline (from [data-fm-extras]), section numbers and dish counts, the happy-hour card, and dish
+     photos that open in the lightbox. */
+  var fmRoot = $('[data-fm-menu]');
+  var km = fmRoot && $('.kora-menu', fmRoot);
+  if (km) {
+    fmRoot.classList.add('is-enhanced');
+    var fmMenus = $$('.kora-menu__menu', km);
+    var extras = $('[data-fm-extras]');
+    var noteIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 10.5v6M12 7.2v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+
+    fmMenus.forEach(function (menu) {
+      var title = $('.kora-menu__menu-title', menu);
+      var intro = extras && $('[data-fm-intro="' + menu.id + '"]', extras);
+      var sections = $$('.kora-menu__section', menu);
+      if (intro && intro.classList.contains('fm-hh__card')) {
+        /* Happy hour: the deal card beside its list, with the days and times from the data. */
+        var when = $('.kora-menu__availability', menu), slot = $('[data-fm-when]', intro);
+        if (when && slot) {
+          var t = when.textContent, comma = t.indexOf(',');
+          var strong = document.createElement('strong');
+          strong.textContent = (comma > 0 ? t.slice(comma + 1) : t).trim();
+          slot.textContent = comma > 0 ? t.slice(0, comma + 1) + ' ' : '';
+          slot.appendChild(strong);
+          when.remove();
+        }
+        var hh = document.createElement('div');
+        var list = document.createElement('div');
+        hh.className = 'fm-hh';
+        sections.forEach(function (s) { list.appendChild(s); });
+        hh.appendChild(intro);
+        hh.appendChild(list);
+        (title || menu.firstChild).after(hh);
+        sections = [];
+      } else if (intro) {
+        var desc = $('.kora-menu__menu-desc', menu);
+        if (desc) intro.appendChild(desc);
+        (title || menu.firstChild).after(intro);
       }
-    }
-    if (history.replaceState) history.replaceState(null, '', '#' + tab.getAttribute('data-fm-tab'));
-  }
-  fmTabs.forEach(function (tab, i) {
-    tab.addEventListener('click', function () { fmSelect(tab); });
-    tab.addEventListener('keydown', function (e) {
-      var n = null;
-      if (e.key === 'ArrowRight') n = fmTabs[(i + 1) % fmTabs.length];
-      if (e.key === 'ArrowLeft') n = fmTabs[(i - 1 + fmTabs.length) % fmTabs.length];
-      if (n) { e.preventDefault(); fmSelect(n, true); }
-    });
-  });
-  if (fmTabs.length) {
-    var initial = (location.hash || '').slice(1);
-    var startTab = fmTabs.filter(function (t) { return t.getAttribute('data-fm-tab') === initial; })[0];
-    if (startTab) fmSelect(startTab);
-  }
-  var catLinks = $$('[data-fm-cats] a');
-  if (catLinks.length && 'IntersectionObserver' in window) {
-    var catIo = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (!en.isIntersecting) return;
-        catLinks.forEach(function (l) {
-          var on = l.getAttribute('href') === '#' + en.target.id;
-          l.classList.toggle('is-active', on);
-          if (on && l.parentElement.scrollTo) {
-            var bar2 = l.parentElement;
-            bar2.scrollTo({ left: l.offsetLeft - bar2.clientWidth / 2 + l.clientWidth / 2, behavior: reduce ? 'auto' : 'smooth' });
-          }
-        });
+      sections.forEach(function (s, n) {
+        var head = document.createElement('div');
+        var num = document.createElement('span');
+        var count = document.createElement('span');
+        var dishes = $$('.kora-menu__item', s).length;
+        head.className = 'fm-section__head';
+        num.className = 'fm-section__num';
+        num.textContent = (n < 9 ? '0' : '') + (n + 1);
+        count.className = 'fm-section__count';
+        count.textContent = dishes + (dishes === 1 ? ' dish' : ' dishes');
+        head.appendChild(num);
+        [$('.kora-menu__section-title', s), $('.kora-menu__section-desc', s)].forEach(function (el) { if (el) head.appendChild(el); });
+        head.appendChild(count);
+        s.insertBefore(head, s.firstChild);
       });
-    }, { rootMargin: '-35% 0px -60% 0px' });
-    catLinks.forEach(function (l) { var sec = document.getElementById(l.getAttribute('href').slice(1)); if (sec) catIo.observe(sec); });
+      var note = $('.kora-menu__menu-note', menu);
+      if (note) {
+        var box = document.createElement('div');
+        box.className = 'fm-note';
+        box.innerHTML = noteIcon;
+        note.before(box);
+        box.appendChild(note);
+      }
+    });
+
+    /* Dishes: dotted leader between name and price; a photo becomes a zoom button that lists the small file and
+       shows the full one in the lightbox (every dish photo has -th and -sm sizes beside it). */
+    $$('.kora-menu__item', km).forEach(function (item) {
+      var head = $('.kora-menu__item-head', item);
+      var price = head && $('.kora-menu__item-price, .kora-menu__prices', head);
+      if (price) {
+        var dots = document.createElement('span');
+        dots.className = 'fm-item__dots';
+        dots.setAttribute('aria-hidden', 'true');
+        head.insertBefore(dots, price);
+      }
+      var img = $('.kora-menu__item-image', item);
+      if (!img) return;
+      var full = img.getAttribute('src'), name = ($('.kora-menu__item-name', item) || {}).textContent || '';
+      var base = /^(.*)\.webp$/.exec(full);
+      if (base && !/-(th|sm)$/.test(base[1])) {
+        img.srcset = base[1] + '-th.webp 320w, ' + base[1] + '-sm.webp 800w, ' + full + ' 1600w';
+        img.sizes = '80px';
+      }
+      img.alt = name + ' at Marigold';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'fm-thumb';
+      btn.setAttribute('data-zoom', full);
+      btn.setAttribute('data-caption', name);
+      btn.setAttribute('aria-label', 'View a photo of ' + name);
+      img.before(btn);
+      btn.appendChild(img);
+    });
+
+    /* The sticky bar: Kora's menu switcher as the tabs, and each menu's category links (only the open one shows). */
+    var bar = document.createElement('div');
+    bar.className = 'fm-bar';
+    bar.setAttribute('data-fm-bar', '');
+    bar.innerHTML = '<div class="wrap"><div class="fm-bar__inner"></div></div>';
+    var barInner = $('.fm-bar__inner', bar), barWrap = $('.wrap', bar);
+    var switcher = $('.kora-menu__switcher', km);
+    if (switcher) {
+      switcher.className = 'fm-tabs';
+      switcher.setAttribute('role', 'tablist');
+      barInner.appendChild(switcher);
+    }
+    if ($('.fm-thumb', km)) {
+      var tip = document.createElement('p');
+      tip.className = 'fm-bar__note';
+      tip.textContent = 'Tap a dish photo to see it up close';
+      barInner.appendChild(tip);
+    }
+    fmMenus.forEach(function (menu) {
+      var nav = $('.kora-menu__nav', menu);
+      if (!nav) return;
+      nav.className = 'fm-cats';
+      nav.setAttribute('data-fm-cats', menu.id);
+      barWrap.appendChild(nav);
+    });
+    fmRoot.before(bar);
+
+    var fmTabs = switcher ? $$('a', switcher) : [];
+    var fmSync = function (id) {
+      fmMenus.forEach(function (m) { m.hidden = m.id !== id; });
+      var open = fmMenus.filter(function (m) { return !m.hidden; })[0];
+      fmTabs.forEach(function (tab) {
+        var on = !!open && tab.getAttribute('href') === '#' + open.id;
+        tab.classList.add('fm-tab');
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+      });
+      $$('[data-fm-cats]', bar).forEach(function (c) { c.hidden = !open || c.getAttribute('data-fm-cats') !== open.id; });
+      return open;
+    };
+    fmTabs.forEach(function (tab, i) {
+      /* Show the menu, then bring its start just under the header + bar, but only when we are already past it.
+         The bar is sticky, so measure the menu, not the bar's offsetTop. */
+      tab.addEventListener('click', function (e) {
+        e.preventDefault();
+        var open = fmSync(tab.getAttribute('href').slice(1));
+        if (!open) return;
+        if (history.replaceState) history.replaceState(null, '', '#' + open.id);
+        var hdrH = header ? header.offsetHeight : 0;
+        var target = open.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - hdrH;
+        if (target < window.scrollY - 2) {
+          if (header) header.classList.remove('is-hidden');   /* scrolling up keeps the header visible */
+          window.scrollTo({ top: Math.max(0, target), behavior: reduce ? 'auto' : 'smooth' });
+        }
+      });
+      tab.addEventListener('keydown', function (e) {
+        var n = null;
+        if (e.key === 'ArrowRight') n = fmTabs[(i + 1) % fmTabs.length];
+        if (e.key === 'ArrowLeft') n = fmTabs[(i - 1 + fmTabs.length) % fmTabs.length];
+        if (n) { e.preventDefault(); n.click(); n.focus(); }
+      });
+    });
+    /* Open the menu the address points into (a menu, a section or a dish); links made before the menu came
+       from data used #dinner, #lunch and #happy-hour. */
+    var hash = (location.hash || '').slice(1);
+    var legacy = { dinner: 'menu-dinner-menu', lunch: 'menu-lunch-menu', 'happy-hour': 'menu-happy-hour' }[hash];
+    var target = hash && document.getElementById(legacy || hash);
+    var startMenu = target && (target.closest('.kora-menu__menu') || null);
+    fmSync(startMenu ? startMenu.id : fmMenus[0] && fmMenus[0].id);
+    if (legacy && history.replaceState) history.replaceState(null, '', '#' + legacy);
+
+    var catLinks = $$('[data-fm-cats] a', bar);
+    if (catLinks.length && 'IntersectionObserver' in window) {
+      var catIo = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          catLinks.forEach(function (l) {
+            var on = l.getAttribute('href') === '#' + en.target.id;
+            l.classList.toggle('is-active', on);
+            if (on && l.parentElement.scrollTo) {
+              var bar2 = l.parentElement;
+              bar2.scrollTo({ left: l.offsetLeft - bar2.clientWidth / 2 + l.clientWidth / 2, behavior: reduce ? 'auto' : 'smooth' });
+            }
+          });
+        });
+      }, { rootMargin: '-35% 0px -60% 0px' });
+      catLinks.forEach(function (l) { var sec = document.getElementById(l.getAttribute('href').slice(1)); if (sec) catIo.observe(sec); });
+    }
   }
   var lb = $('[data-lightbox]');
   if (lb && typeof lb.showModal === 'function') {
