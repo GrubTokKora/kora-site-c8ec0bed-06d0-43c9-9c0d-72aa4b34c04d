@@ -19,8 +19,9 @@
   --color-surface: #FFFCF7;
   --color-border: #E4D8C6;
 
-  --font-heading: "Gloock", "Times New Roman", Georgia, serif;
-  --font-body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-heading: var(--kora-font-heading, "Gloock"), "Times New Roman", Georgia, serif;
+  --font-body: var(--kora-font-body, "Hanken Grotesk"), "Helvetica Neue", Arial, sans-serif;
+  --font-accent: var(--kora-font-accent, var(--font-heading)), var(--font-heading);
 }
 
 @layer components {
