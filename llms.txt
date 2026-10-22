@@ -1,6 +1,6 @@
 # Marigold
 
-> Marigold is a modern Indian dining establishment located at 434 White Plains Rd in Eastchester, NY 10709.
+> Marigold is a modern Indian restaurant located at 434 White Plains Rd in Eastchester, NY 10709. It offers contemporary dining experiences in the heart of the community.
 
 ### Offers
 - Happy Hour
