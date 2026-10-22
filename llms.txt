@@ -1,7 +1,29 @@
 # Marigold
 
-> Marigold is a business located at 434 White Plains Rd, Eastchester, NY 10709, USA.
+> Marigold is a modern Indian dining establishment located at 434 White Plains Rd in Eastchester, NY 10709.
+
+### Offers
+- Happy Hour
+- Weekend Early Bird
 
 ## Location & Contact
-- Address: 434 White Plains Rd, Eastchester, NY 10709, USA
+- Address: 434 White Plains Rd, Eastchester, NY 10709
 - Phone: (914) 202-9455
+- Email: info@marigold.restaurant
+
+## Hours
+- Monday: 11:30 AM – 3:00 PM, 4:30 PM – 10:00 PM
+- Tuesday: 11:30 AM – 3:00 PM, 4:30 PM – 10:00 PM
+- Wednesday: 11:30 AM – 3:00 PM, 4:30 PM – 10:00 PM
+- Thursday: 11:30 AM – 3:00 PM, 4:30 PM – 10:00 PM
+- Friday: 11:30 AM – 10:00 PM
+- Saturday: 11:30 AM – 10:00 PM
+- Sunday: 11:30 AM – 9:30 PM
+
+## Action Links
+- [Reserve a Table](https://resy.com/cities/eastchester-ny-ny/venues/marigold)
+- [Order Online](https://www.ordermarigoldrestaurant.com/)
+
+## Social
+- [Instagram](https://www.instagram.com/indiancuisinemarigold)
+- [Facebook](https://www.facebook.com/408924418967155)
